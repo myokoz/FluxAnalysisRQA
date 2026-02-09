@@ -34,3 +34,4 @@ data/*.nc
 # Output files
 results/
 figures/
+.DS_Store
