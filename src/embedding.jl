@@ -12,7 +12,9 @@ using Statistics
 using Plots
 
 # 3Dプロット用のバックエンドを有効化
-plotly()  # または gr()
+# plotly() for interactive plots
+gr()  # for static plots
+
 
 # ========================================
 # 状態空間の再構成
