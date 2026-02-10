@@ -12,6 +12,7 @@ begin
     Pkg.activate(joinpath(@__DIR__, ".."))
     
     # 2. 必要なライブラリの読み込み
+	using Printf
     # using Plots
     # ※ CSVやDataFramesなど、サブプログラム内で必要なものはここでusingするか、
     # 各.jlファイルの中でusingされていればOKです。
