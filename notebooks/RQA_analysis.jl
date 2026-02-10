@@ -4,37 +4,60 @@
 using Markdown
 using InteractiveUtils
 
-# ╔═╡ fcfc8a78-05bf-11f1-b4f0-439ab4d60004
+# ╔═╡ c87ec8d7-bce5-4d30-b7a5-10fc0c0b942d
 begin
     import Pkg
-    # 1. ノートブックの場所(notebooks/)から一つ上の階層（ルート）を有効化
-    # これによりProject.tomlに記載されたパッケージが使用可能になります
     Pkg.activate(joinpath(@__DIR__, ".."))
-    
-    # 2. 必要なライブラリの読み込み
-	using Printf
-    # using Plots
-    # ※ CSVやDataFramesなど、サブプログラム内で必要なものはここでusingするか、
-    # 各.jlファイルの中でusingされていればOKです。
-
-    # 3. srcディレクトリにある3つのプログラムを順番に読み込む
-    include(joinpath(@__DIR__, "..", "src", "data_loading.jl"))
-    include(joinpath(@__DIR__, "..", "src", "drought_extract.jl"))
-    include(joinpath(@__DIR__, "..", "src", "embedding.jl"))
-    
-    # 4. (任意) 読み込みが完了したことを示すメッセージ
-    "プロジェクトの環境とソースコードを正常に読み込みました。"
+    using Printf, XLSX, DataFrames, Dates, Plots, Statistics, LinearAlgebra
 end
 
-# ╔═╡ 7ba4eb13-da38-4958-8ee7-24008e2f3f42
-begin
-    # プロジェクトルートからの相対パスで指定
-    data_path = joinpath(@__DIR__, "..", "data", "data.xlsx")
+# ╔═╡ c5e6297e-e4d2-490c-940b-7589bd67bb32
+module DataLoad
+    using XLSX, DataFrames, Dates, Plots, Statistics
+    include(joinpath(@__DIR__, "..", "src", "data_loading.jl"))
+end
+
+# ╔═╡ 5935c0f1-3096-4c82-bcad-874658c8fdea
+module DroughtExtract
+    using DataFrames, Dates, Statistics, Plots, Printf
+    import ..DataLoad # 親のDataLoadを参照
+    # data_loading.jlで作られたflux_dataをこのモジュール内でも使えるようにする
+    const flux_data = DataLoad.flux_data 
+    include(joinpath(@__DIR__, "..", "src", "drought_extract.jl"))
+end
+
+# ╔═╡ 21ec580d-3a9d-4f11-a30c-4124a770b8d8
+module Embedding
+    using LinearAlgebra, Statistics, Plots, Printf
+    import ..DroughtExtract
     
-    # data_loading.jl で定義されている関数を使ってデータをロード
-    # 例：raw_data = load_my_data(data_path)
+    # 【重要】隣のモジュールから関数を持ち込む
+    const create_daily_mean_nee = DroughtExtract.create_daily_mean_nee
+    
+    include(joinpath(@__DIR__, "..", "src", "embedding.jl"))
+end
+
+# ╔═╡ 8f0f74bf-eaf5-481a-84bf-71d646135804
+begin
+    # 判定結果とデータの取得
+    class_results = DroughtExtract.drought_classification
+    main_data = DataLoad.flux_data
+    
+    # 分析の実行
+    Embedding.compare_recurrence_drought_vs_normal(
+        main_data,
+        class_results;
+        start_month=3,
+        end_month=5,
+        m=3,
+        tau=1,
+        threshold_quantile=0.10
+    )
 end
 
 # ╔═╡ Cell order:
-# ╠═fcfc8a78-05bf-11f1-b4f0-439ab4d60004
-# ╠═7ba4eb13-da38-4958-8ee7-24008e2f3f42
+# ╠═c87ec8d7-bce5-4d30-b7a5-10fc0c0b942d
+# ╠═c5e6297e-e4d2-490c-940b-7589bd67bb32
+# ╠═5935c0f1-3096-4c82-bcad-874658c8fdea
+# ╠═21ec580d-3a9d-4f11-a30c-4124a770b8d8
+# ╠═8f0f74bf-eaf5-481a-84bf-71d646135804
