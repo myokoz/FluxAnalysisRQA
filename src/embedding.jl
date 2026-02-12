@@ -12,12 +12,10 @@ using Statistics
 using Plots
 
 # 3Dプロット用のバックエンドを有効化
-# plotly() for interactive plots
-gr()  # for static plots
-
+plotly()  # または gr()
 
 # ========================================
-# 状態空間の再構成
+# 1. 状態空間の再構成
 # ========================================
 
 """
@@ -63,7 +61,7 @@ function create_embedding(data::Vector{Float64}, m::Int, tau::Int)
 end
 
 # ========================================
-# リカレンス行列の計算
+# 2. リカレンス行列の計算
 # ========================================
 
 """
@@ -234,7 +232,7 @@ function plot_state_space_with_projection(
 end
 
 # ========================================
-# リカレンス統計量の計算
+# 3. リカレンス行列の計算
 # ========================================
 
 """
@@ -513,7 +511,72 @@ function create_recurrence_matrix(embedded_data::Matrix{Float64}, threshold::Flo
 end
 
 # ========================================
-# 5. リカレンスプロットを作成する関数
+# 5. 全年プールによる閾値の計算
+# ========================================
+
+"""
+    compute_pooled_threshold(
+        flux_data::Dict,
+        years::Vector{Int},
+        start_month::Int,
+        end_month::Int;
+        m::Int=3,
+        tau::Int=1,
+        threshold_quantile::Float64=0.10
+    ) -> Float64
+
+複数年のデータをプールして共通の閾値を計算する。
+年ごとに閾値を変えると RR 等が一定になってしまう問題を回避する。
+
+# 引数
+- flux_data: data_loading.jl で作成したデータ
+- years: 対象年のベクトル
+- start_month: 開始月
+- end_month: 終了月
+- m: 埋め込み次元
+- tau: 時間遅れ
+- threshold_quantile: 閾値を決定するための分位点
+
+# 戻り値
+- threshold: 全年プールから算出した共通閾値
+"""
+function compute_pooled_threshold(
+    flux_data::Dict,
+    years::Vector{Int},
+    start_month::Int,
+    end_month::Int;
+    m::Int=3,
+    tau::Int=1,
+    threshold_quantile::Float64=0.10
+)
+    all_distances = Float64[]
+
+    for year in years
+        daily_nee = create_daily_mean_nee(flux_data, year, start_month, end_month)
+        nee_values = daily_nee["values"]
+        embedded_data = create_embedding(nee_values, m, tau)
+        n_embedded = size(embedded_data, 1)
+
+        for i in 1:n_embedded
+            for j in (i+1):n_embedded
+                distance = norm(embedded_data[i, :] - embedded_data[j, :])
+                push!(all_distances, distance)
+            end
+        end
+    end
+
+    if isempty(all_distances)
+        error("プールされた距離データが空です")
+    end
+
+    threshold = quantile(all_distances, threshold_quantile)
+    println("全年プール閾値: $(round(threshold, digits=4)) ($(length(years))年分, 分位点=$(threshold_quantile))")
+
+    return threshold
+end
+
+# ========================================
+# 6. リカレンスプロットを作成する関数
 # ========================================
 
 """
@@ -526,6 +589,7 @@ end
         m::Int=3,
         tau::Int=1,
         threshold_quantile::Float64=0.10,
+        threshold::Union{Nothing,Float64}=nothing,
         plot_state_space::Bool=true,
         print_statistics::Bool=true
     ) -> Tuple
@@ -540,7 +604,8 @@ end
 - season_name: 季節名（表示用）
 - m: 埋め込み次元（デフォルト: 3）
 - tau: 時間遅れ（デフォルト: 1）
-- threshold_quantile: 閾値を決定するための分位点（デフォルト: 0.10）
+- threshold_quantile: 閾値を決定するための分位点（デフォルト: 0.10）。thresholdが指定された場合は無視される
+- threshold: 閾値の直接指定（デフォルト: nothing）。指定された場合はthreshold_quantileより優先される
 - plot_state_space: 3D状態空間プロットも作成するか（デフォルト: true）
 - print_statistics: RQA統計量を表示するか（デフォルト: true）
 
@@ -560,6 +625,7 @@ function plot_recurrence(
     m::Int=3,
     tau::Int=1,
     threshold_quantile::Float64=0.10,
+    threshold::Union{Nothing,Float64}=nothing,
     plot_state_space::Bool=true,
     print_statistics::Bool=true
 )
@@ -582,29 +648,28 @@ function plot_recurrence(
     
     println("埋め込み後のデータ点数: $(size(embedded_data, 1))")
     
-    # 閾値を設定（距離の分位点）
-    n_embedded = size(embedded_data, 1)
-    all_distances = Float64[]
-    
-    for i in 1:n_embedded
-        for j in (i+1):n_embedded
-            distance = norm(embedded_data[i, :] - embedded_data[j, :])
-            push!(all_distances, distance)
+    # 閾値を設定
+    if isnothing(threshold)
+        # 閾値が指定されていない場合は、この年のデータから計算（従来の動作）
+        n_embedded = size(embedded_data, 1)
+        all_distances = Float64[]
+
+        for i in 1:n_embedded
+            for j in (i+1):n_embedded
+                distance = norm(embedded_data[i, :] - embedded_data[j, :])
+                push!(all_distances, distance)
+            end
         end
+
+        if isempty(all_distances)
+            error("all_distancesが空です")
+        end
+
+        threshold = quantile(all_distances, threshold_quantile)
+        println("閾値: $(round(threshold, digits=4)) (年単独)")
+    else
+        println("閾値: $(round(threshold, digits=4)) (全年プール)")
     end
-    
-    # デバッグ: all_distancesの型と内容を確認
-    if isempty(all_distances)
-        error("all_distancesが空です")
-    end
-    if !(all_distances isa Vector{Float64})
-        error("all_distancesが正しい型ではありません。型: $(typeof(all_distances))")
-    end
-    
-    # 指定された分位点で閾値を設定
-    threshold = quantile(all_distances, threshold_quantile)
-    
-    println("閾値: $(round(threshold, digits=4))")
     println("========================================\n")
     
     # リカレンス行列を作成
@@ -647,7 +712,7 @@ function plot_recurrence(
 end
 
 # ========================================
-# 複数年のリカレンスプロットを一括作成
+# 4. 複数年のリカレンスプロットを一括作成
 # ========================================
 
 """
@@ -681,8 +746,14 @@ function plot_recurrence_for_years(
     plot_state_space::Bool=true,
     print_statistics::Bool=true
 )
+    # 全年プールで共通閾値を計算
+    pooled_threshold = compute_pooled_threshold(
+        flux_data, years, start_month, end_month;
+        m=m, tau=tau, threshold_quantile=threshold_quantile
+    )
+
     results = Dict{Int, Tuple}()
-    
+
     for year in years
         embedded_data, rec_matrix, rqa_stats, rec_plot, state_plot = plot_recurrence(
             flux_data,
@@ -692,25 +763,25 @@ function plot_recurrence_for_years(
             season_name;
             m=m,
             tau=tau,
-            threshold_quantile=threshold_quantile,
+            threshold=pooled_threshold,
             plot_state_space=plot_state_space,
             print_statistics=print_statistics
         )
-        
+
         results[year] = (embedded_data, rec_matrix, rqa_stats, rec_plot, state_plot)
-        
+
         # プロットを表示
         display(rec_plot)
         if !isnothing(state_plot)
             display(state_plot)
         end
     end
-    
+
     return results
 end
 
 # ========================================
-# 干ばつ年と通常年のリカレンスプロット比較
+# 5. 干ばつ年と通常年のリカレンスプロット比較
 # ========================================
 
 """
@@ -752,11 +823,18 @@ function compare_recurrence_drought_vs_normal(
 )
     drought_years = drought_classification["drought_years"]
     normal_years = drought_classification["normal_years"]
-    
+
+    # 干ばつ年＋通常年の全年をプールして共通閾値を計算
+    all_years = vcat(collect(drought_years), collect(normal_years))
+    pooled_threshold = compute_pooled_threshold(
+        flux_data, all_years, start_month, end_month;
+        m=m, tau=tau, threshold_quantile=threshold_quantile
+    )
+
     println("\n" * "=" ^ 70)
     println("干ばつ年のリカレンスプロットと状態空間")
     println("=" ^ 70)
-    
+
     drought_results = Dict{Int, Tuple}()
     for year in drought_years
         embedded_data, rec_matrix, rqa_stats, rec_plot, state_plot = plot_recurrence(
@@ -767,22 +845,22 @@ function compare_recurrence_drought_vs_normal(
             "Spring (Drought)";
             m=m,
             tau=tau,
-            threshold_quantile=threshold_quantile,
+            threshold=pooled_threshold,
             plot_state_space=plot_state_space,
             print_statistics=print_statistics
         )
-        
+
         drought_results[year] = (embedded_data, rec_matrix, rqa_stats, rec_plot, state_plot)
         display(rec_plot)
         if !isnothing(state_plot)
             display(state_plot)
         end
     end
-    
+
     println("\n" * "=" ^ 70)
     println("通常年のリカレンスプロットと状態空間")
     println("=" ^ 70)
-    
+
     normal_results = Dict{Int, Tuple}()
     for year in normal_years
         embedded_data, rec_matrix, rqa_stats, rec_plot, state_plot = plot_recurrence(
@@ -793,11 +871,11 @@ function compare_recurrence_drought_vs_normal(
             "Spring (Normal)";
             m=m,
             tau=tau,
-            threshold_quantile=threshold_quantile,
+            threshold=pooled_threshold,
             plot_state_space=plot_state_space,
             print_statistics=print_statistics
         )
-        
+
         normal_results[year] = (embedded_data, rec_matrix, rqa_stats, rec_plot, state_plot)
         display(rec_plot)
         if !isnothing(state_plot)

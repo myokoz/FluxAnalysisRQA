@@ -24,9 +24,7 @@ println("データの読み込みと前処理")
 println("=" ^ 70 * "\n")
 
 # data_loading.jl を実行
-# @__DIR__ は絶対パスを返す
-include(joinpath(@__DIR__, "..", "src", "data_loading.jl"))
-#include("data_loading.jl")
+include("data_loading.jl")
 
 println("\nデータ読み込み完了: flux_data")
 println()
@@ -40,8 +38,7 @@ println("春季データの抽出と干ばつ年判定")
 println("=" ^ 70 * "\n")
 
 # drought_extract.jl を実行
-include(joinpath(@__DIR__, "..", "src", "drought_extract.jl"))
-# include("drought_extract.jl")
+include("drought_extract.jl")
 
 println("\n干ばつ年判定完了: drought_classification")
 println()
@@ -55,8 +52,7 @@ println("Embedding")
 println("=" ^ 70 * "\n")
 
 # embedding.jl を実行
-include(joinpath(@__DIR__, "..", "src", "embedding.jl"))
-#include("embedding.jl")
+include("embedding.jl")
 
 # ========================================
 # リカレンスプロットの作成
