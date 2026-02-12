@@ -10,9 +10,8 @@ using Dates
 using Plots
 using Statistics
 
-# データファイルのパス
-data_file = "/Users/myokoz/Library/CloudStorage/Dropbox/dropbox_WS/current/22_SSR/\
-AmeriFlux_analysis/data.xlsx"
+# データファイルのパス（スクリプトのディレクトリからの相対パス）
+data_file = joinpath(@__DIR__, "..", "data", "data.xlsx")
 
 
 # ========================================
